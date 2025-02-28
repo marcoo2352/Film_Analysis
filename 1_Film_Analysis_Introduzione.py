@@ -121,25 +121,47 @@ max_genres = result.select(pl.max("num_genres")).item()
 
 #print(f"Il numero massimo di generi assegnati a un film è: {max_genres}")
 # Il numero massimo di generi assegnati a un film è: 9
-print(Movies.columns)
+#print(Movies.columns)
 # Genre è nella nona colonna posizione della lista
+import polars as pl
+
 def assegnazione_generi(df):
-    colonne = df.columns 
-    colonne.append("Genre_Unique")  # Aggiungi la nuova colonna
-    df2 = pl.DataFrame({col: [] for col in colonne})
-    n = df.height()
-    for i in len(0,n):
-        if df.row(i)[9] == "":
-            df2.extend(df.slice(i,i))# devo aggiungere la parte di variabile_Unique anche sotto
-        else:
-            generi = df.row(i)[9].split(",")
-            numero_generi = len(generi)
-            for j in len(0, numero_generi):
+    # Separa i generi in liste, gestendo i valori nulli o vuoti
+    df = df.with_columns(
+        pl.col(df.columns[9])
+        .str.split(",").alias("GenreS")
+    )
+    
+    # Esplodi la colonna dei generi in più righe
+    df = df.explode("GenreS")
+    
+    # Sostituisci eventuali valori nulli con "null"
+    df = df.with_columns(
+        pl.col("GenreS").fill_null("null")
+    )
+    
+    return df
 
+Moviest = assegnazione_generi(Movies)
 
+def assegnazione_scrittori(df):
+    # Separa i generi in liste, gestendo i valori nulli o vuoti
+    df = df.with_columns(
+        pl.col(df.columns[7])
+        .str.split(",").alias("Writer")
+    )
 
+    df = df.explode("Writer")
 
+    df = df.with_columns(
+        pl.col("Writer").fill_null("null")
+    )
+    
+    return df
 
+Moviest = assegnazione_scrittori(Moviest)
+Moviest = Moviest.drop(["Written by", "Duration", "Genres"])
+print(Moviest.columns)
 ##############################################################################
 
 #########################################
@@ -163,4 +185,36 @@ st.markdown("""In questa analisi esamineremo un insieme di film considerando cin
 #prima introduzione sui dati
 
 st.markdown("<h1 style='font-size: 40px;'>1. Visualizziamo il Campione</h1", unsafe_allow_html=True)
+st.markdown("""In questo dataset stiamo utilizzando circa 16000 film, stiamo considerando un vasto numero di generi come:
+            Romance, Sci-Fi, Adventure, Mystery, Drama, Animation, Fantasy... Stiamo prendendo in considerazione un intervallo 
+            temporale cha va dal 1910 fino ad oggi, considerando film prodotti da una vasta gamma di registi.
+            Scopriamo meglio il nostro campione
+
+""")
+
+st.markdown("<h1 style='font-size: 30px;'>1.1 Generi </h1", unsafe_allow_html=True)
+
+
+
+pie_graph = (alt.Chart(Moviest)
+    .mark_arc(
+        cornerRadius=8,
+        radius=120,
+        radius2=80)
+    .encode(
+        alt.Theta("count(GenereS):Q"))
+    .properties(height = 300, width = 600))
+
+
+tot = (
+    alt.Chart(Moviest)
+    .mark_text(radius=0, size=30, color= "white")
+    .encode(alt.Text("count(GenereS):Q"))   #conta il numero di elementi per ciascuna categoria
+    .properties(height=300, width=600)
+)
+
+st.altair_chart(
+    pie_graph + tot,
+    use_container_width=True
+)
 
