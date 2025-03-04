@@ -161,7 +161,7 @@ def assegnazione_scrittori(df):
 
 Moviest = assegnazione_scrittori(Moviest)
 Moviest = Moviest.drop(["Written by", "Duration", "Genres"])
-print(Moviest.columns)
+
 ##############################################################################
 
 #########################################
@@ -192,7 +192,7 @@ st.markdown("""In questo dataset stiamo utilizzando circa 16000 film, stiamo con
 
 """)
 ######################## BARPLOT GENERI ###################################
-st.markdown("<h1 style='font-size: 30px;'>1.1 Generi </h1", unsafe_allow_html=True)
+st.markdown("<h1 style='font-size: 30px;'>1.1 Generi Cinematografici </h1", unsafe_allow_html=True)
 
 
 Film_Generi_Unici= Moviest.unique(subset=['Title', 'GenreS'])
@@ -234,60 +234,188 @@ genre_colors = {
     "War": '#606C38',            # Olive green
     "Western": '#DDA15E'         # Tan/sand
 }
-print(Film_Generi_Count)
-bar_chart_generi = alt.Chart(Film_Generi_Count).mark_bar().encode(
-    alt.Color("GenreS:N").scale(domain=list(genre_colors.keys()), range=list(genre_colors.values())).legend(None),
-    alt.X("count:Q"),
-    alt.Y("GenreS:N", sort='-x')
-).properties(
-    width=600,
-    height=700
+
+
+# Grafico 
+
+highlight = alt.selection_single(
+    on='mouseover',  # Attiva l'effetto al passaggio del mouse
+    fields=['GenreS'],  # Campo su cui applicare l'effetto
+    empty='none'  # Nessun effetto quando non c'è selezione
 )
 
+# 2. Creazione del bar chart con bordo condizionale
+bar_chart = alt.Chart(Film_Generi_Count).mark_bar(
+    cornerRadiusTopRight=5,
+    cornerRadiusTopLeft=5,
+    size=20,
+    strokeWidth=2  # Spessore del bordo
+).encode(
+    x=alt.X('count:Q', title='Numero di Film'),
+    y=alt.Y('GenreS:N', title='Genere', sort='-x'),
+    color=alt.Color('GenreS:N').scale(
+        domain=list(genre_colors.keys()),
+        range=list(genre_colors.values())
+    ).legend(None),
+    stroke=alt.condition(  # Condizione per il bordo
+        highlight,
+        alt.value('black'),  # Bordo nero quando evidenziato
+        alt.value(None)  # Nessun bordo altrimenti
+    ),
+    opacity=alt.condition(  # Opacità per migliorare l'effetto
+        highlight,
+        alt.value(1),  # Pienamente visibile quando evidenziato
+        alt.value(0.8)  # Leggermente trasparente altrimenti
+    )
+)
 
+# 3. Aggiungi la selezione al grafico
+bar_chart = bar_chart.add_selection(highlight)
 
-frequenze_generi = Film_Generi_Unici.group_by("GenreS").count().sort("count", descending=True)
-dict_frequenze = dict()
-for i in range(28):
-    dict_frequenze[frequenze_generi.row(i)[0]] = frequenze_generi.row(i)[1]
+# 4. Aggiungi etichette (come prima)
+labels = alt.Chart(Film_Generi_Count).mark_text(
+    align='left',
+    baseline='middle',
+    dx=3,
+    fontSize=12,
+    color='black'
+).encode(
+    x=alt.X('count:Q'),
+    y=alt.Y('GenreS:N', sort='-x'),
+    text=alt.Text('count:Q')
+)
 
-col1, col2 = st.columns([1, 2])  # 1/3 testo, 2/3 grafico
+# 5. Combina grafico e etichette
+combined_chart = (bar_chart + labels).properties(
+    width=600,
+    height=700,
+    padding = {"right": 20}
+).configure_axis(
+    labelFontSize=12,
+    titleFontSize=14
+)
 
+# 6. Mostra il grafico in Streamlit
+col1, col2 = st.columns([1, 3])
 # Testo nella prima colonna (sinistra)
 
 with col1:
     st.write("### Distribuzione dei Generi")
     st.write("""
-    Come possiamo vedere dal grafico nei 16000 film il genere maggiormente presente sono le commedy con , seguite dai thriller, romance e crime. Dovremo comunque stare attenti nelle analisi succesive nel valutare i generi meno rappresentati:
+    Come possiamo vedere dal grafico nei 16000 film il genere maggiormente rappresentato è Drama per distacco, dopo troviamo Comedy, Thriller e Romance.
+    Nelle nostre analisi dovremo porre attenzione ai generi: Film-Noir, Talk Show, Reality TV e Game Show; i quali hanno soltanto una osservazione quindi se trattati adeguatamente potrebbero distorcere le analisi.
+    Nonostante queste singolarità gli altri generi sono ben rappresentati
     """)
-    frequenze_str = " | ".join(f"{key}: {value}" for key, value in dict_frequenze.items())
-    st.markdown(f"{frequenze_str}")
 
 # Grafico nella seconda colonna (destra)
 with col2:
-    st.altair_chart(bar_chart_generi, use_container_width=True)
+    st.altair_chart(combined_chart, use_container_width=True)
 
 ####################    Serie Anni         #########################################
-st.markdown("<h1 style='font-size: 30px;'>1.2 Anni </h1", unsafe_allow_html=True)
+st.markdown("<h1 style='font-size: 30px;'>1.2 Film per Anno e Genere</h1>", unsafe_allow_html=True)
 
 
-Film_Anni_Unici = Moviest.unique(subset=['Title', 'Year'])
- 
-Film_Anni_Count = Film_Generi_Unici.group_by('Year').agg(pl.count().alias('count')).sort('Year')
- 
-bar_chart_anno = alt.Chart(Film_Anni_Count).mark_bar().encode(
-    alt.Y("count:Q", title="Numero di Film"),
-    alt.X("Year:N", title="Anno", sort="x"),
-    alt.Color('count:Q', scale=alt.Scale(scheme='blues'), legend=None)
-).properties(
-    width=600,
-    height=600,
-    title="Numero di Film Unici per Anno"
+@st.cache_data 
+
+def load_data():
+    return Moviest.unique(subset=['Title', 'Year', "GenreS"])
+
+Film_Anni_Generi = load_data()
+Film_Anni_Generi = (
+    Film_Anni_Generi
+    .group_by(pl.col("Year"), pl.col("GenreS"))
+    .agg(Numero_Di_Film=pl.col("Title").count())
+)
+@st.cache_data
+def somma_film_anno():
+    Somma_anni = Moviest.unique(subset=['Title', 'Year'])
+    Somma_anni = (Somma_anni.group_by(pl.col('Year'))
+        .agg(Numero_Di_Film=pl.col("Title").count())    
+    )
+    return(Somma_anni)
+Yearsum = somma_film_anno()
+Yearsum = Yearsum.with_columns(pl.lit("Total").alias("GenreS"))
+
+# Unisci i due dataset
+Yearsum = Yearsum.select(["Year", "GenreS", "Numero_Di_Film"])
+Film_Anni_Generi = pl.concat([Film_Anni_Generi, Yearsum])
+
+genre_colors["Total"] = "black" 
+
+# Ottieni tutti gli anni e generi unici
+all_years = Film_Anni_Generi.select(pl.col("Year")).unique().sort("Year")
+all_genres = Film_Anni_Generi.select(pl.col("GenreS")).unique()
+
+# Crea un dataset completo con tutte le combinazioni di Year e GenreS
+complete_data = all_years.join(all_genres, how="cross")
+
+
+# Unisci i dati completi con i dati aggregati
+Film_Anni_Generi_completo = complete_data.join(
+    Film_Anni_Generi, on=["Year", "GenreS"], how="left"
+).fill_null(0)
+
+
+
+# Estrai tutti i generi unici
+@st.cache_data 
+def load_data2():
+    return Film_Anni_Generi.select(pl.col("GenreS")).unique()["GenreS"]
+
+
+unique_genres = load_data2()
+
+if "selected_genres" not in st.session_state:
+    st.session_state.selected_genres = ["Total", "Drama", "Comedy", "Thriller"]
+
+# Creazione della selezione con valori predefiniti
+selected_genres = st.multiselect(
+    'Seleziona i generi da visualizzare', 
+    unique_genres, 
+    default=st.session_state.selected_genres
 )
 
+# **Aggiorna lo stato solo se c'è una modifica**
+if selected_genres != st.session_state.selected_genres:
+    st.session_state.selected_genres = selected_genres
+
+# Filtra i dati in base ai generi selezionati
+filtered_data = Film_Anni_Generi_completo.filter(pl.col("GenreS").is_in(st.session_state.selected_genres))
 
 
-st.altair_chart(bar_chart_anno)
+# Crea un oggetto chart base
+chart = (
+    alt.Chart(filtered_data)
+    .encode( color=alt.Color('GenreS:N').scale(
+        domain=list(genre_colors.keys()),
+        range=list(genre_colors.values())
+    ).legend(None))
+)
+
+# Disegna la linea
+line = chart.mark_line().encode(x="Year:T", y="Numero_Di_Film:Q")
+
+# Usa l'aggregazione argmax per limitare il dataset all'ultimo valore
+label = chart.encode(
+    x=alt.X("max(Year):T"),
+    y=alt.Y("Numero_Di_Film:Q", aggregate=alt.ArgmaxDef(argmax="Year")),
+    text="GenreS",
+)
+
+# Crea l'etichetta di testo
+text = label.mark_text(align="left", dx=4)
+
+# Crea l'annotazione del cerchio
+circle = label.mark_circle()
+
+# Combina tutti gli strati
+final_chart = line + circle + text
+
+# Visualizzazione in Streamlit
+
+
+st.altair_chart(final_chart, use_container_width=True)
+
 st.markdown(""" La quantità di film a nostra disposizione varia molto:
             fino al 1980 abbiamo circa un centinaio di film per anno, questa quantità 
             continua ad aumentare gradualmente fino a gli anni la quale impenna stabiliazzandosi intorno al 2005, 
